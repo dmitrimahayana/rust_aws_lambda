@@ -1,105 +1,66 @@
-use std::thread;
-use std::collections::HashMap;
-use std::collections::BTreeMap;
+use rusoto_core::{Region, RusotoError};
+use rusoto_s3::{S3Client, S3, GetObjectRequest};
+use serde_json::Value;
+use std::env;
+use dotenv::dotenv;
+use std::error::Error;
+use tokio::io::AsyncReadExt; // Import the trait
+// use std::io::Read;
 
-fn add(a: i32, b: i32) -> i32 {
-    a + b
+async fn s3_config_download(bucket: &str, key: &str) -> Result<Value, Box<dyn Error>> {
+    let client = S3Client::new(Region::default());
+
+    let get_req = GetObjectRequest {
+        bucket: bucket.to_string(),
+        key: key.to_string(),
+        ..Default::default()
+    };
+
+    let result = client.get_object(get_req).await?;
+    let stream = result.body.ok_or("No body in response")?;
+    let mut body = Vec::new();
+    stream.into_async_read().read_to_end(&mut body).await?;
+
+    let data = String::from_utf8(body)?;
+    let json_data: Value = serde_json::from_str(&data)?;
+
+    Ok(json_data)
 }
 
-fn main() {
-    let data = "result";
-    // Number of threads to use
-    let num_threads = 4;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    // Load the `.env` file
+    dotenv().ok();
 
-    // Total numbers to count
-    let total_count = 100;
+    let sm_configuration_bucket: String = env::var("SM_CONFIGURATION_BUCKET").expect("SM_CONFIGURATION_BUCKET environment variable is not set");
+    let sm_client_id = env::var("SM_CLIENT").expect("SM_CLIENT environment variable is not set");
+    let config_key = format!("{}/config.json", sm_client_id);
 
-    // Calculate the range each thread will handle
-    let range_per_thread = total_count / num_threads;
-
-    // Create a vector to hold the thread handles
-    let mut handles = vec![];
-
-    for i in 0..num_threads {
-        let start = i * range_per_thread + 1;
-        // let end = if i == num_threads - 1 {
-        //     total_count
-        // } else {
-        //     start + range_per_thread - 1
-        // };
-        let end;
-        if i == num_threads -1 {
-            end = total_count
-        } else {
-            end = add(start, range_per_thread - 1)
-        }
-        let value = format!("{} start:{} end:{}", data, start, end);
-        println!("{}", value);
-
-        // Spawn a new thread for each range
-        let handle = thread::spawn(move || {
-            for num in start..=end {
-                println!("Thread {:?} counting: {}", i + 1, num);
+    match s3_config_download(&sm_configuration_bucket, &config_key).await {
+        Ok(customer_config) => {
+            // println!("Customer config: {:?}", customer_config);
+            if let Some(rds_connection) = customer_config.get("rds_connection") {
+                if let Some(host) = rds_connection.get("host").and_then(Value::as_str) {
+                    println!("RDS Host: {}", host);
+                }
+                if let Some(password) = rds_connection.get("password").and_then(Value::as_str) {
+                    println!("RDS Password: {}", password);
+                }
+                if let Some(port) = rds_connection.get("port").and_then(Value::as_u64) {
+                    println!("RDS Port: {}", port);
+                }
+                if let Some(user) = rds_connection.get("user").and_then(Value::as_str) {
+                    println!("RDS User: {}", user);
+                }
+            } else {
+                println!("rds_connection not found in customer config");
             }
-        });
-
-        // Push the thread handle to the vector
-        handles.push(handle);
+        }
+        Err(err) => {
+            eprintln!("Failed to download config: {}", err);
+            return Err(err);
+        }
     }
 
-    // Wait for all threads to complete
-    for handle in handles {
-        handle.join().unwrap();
-    }
-
-    println!("All threads have finished counting.");
-
-    let mut map1: HashMap<&str, [i32; 3]> = HashMap::new();
-    let arr = [10, 20, 30];
-    map1.insert("first", [1, 2, 3]);
-    map1.insert("second", arr);
-    // if let Some(arr) = map1.get("first") {
-    //     println!("map1 ==> Value for 'first': {:?}", arr); // Output: [1, 2, 3]
-    // }
-    for (key, value) in &map1 {
-        println!("map1 ==> Key: {}, Value: {:?}", key, value);
-    }
-    println!();
-    
-    let mut map2: HashMap<&str, Vec<i32>> = HashMap::new();
-    let mut vec = vec![10, 20, 30];
-    vec.push(40); // Add an element
-    map2.insert("1st", vec![1, 2, 3]);
-    map2.insert("2nd", vec.clone());
-    map2.insert("3rd", vec.clone());
-    map2.insert("4th", vec);
-
-    // Add more elements to an existing key's value
-    if let Some(vec) = map2.get_mut("first") {
-        vec.push(100); // Add 4 to the vector
-    }
-    // if let Some(vec) = map2.get("first") {
-    //     println!("map2 ==> Value for 'first': {:?}", vec); // Output: [1, 2, 3, 4]
-    // }
-    for (key, value) in &map2 {
-        println!("map2 ==> Key: {}, Value: {:?}", key, value);
-    }
-    println!();
-
-    let mut map3: BTreeMap<&str, Vec<i32>> = BTreeMap::new();
-    let mut vec = vec![10, 20, 30];
-    vec.push(40); // Add an element
-    map3.insert("1st", vec![1, 2, 3]);
-    map3.insert("2nd", vec.clone());
-    map3.insert("3rd", vec.clone());
-    map3.insert("4th", vec);
-
-    // Add more elements to an existing key's value
-    if let Some(vec) = map3.get_mut("first") {
-        vec.push(100); // Add 4 to the vector
-    }
-
-    for (key, value) in &map3 {
-        println!("map3 ==> Key: {}, Value: {:?}", key, value);
-    }
+    Ok(())
 }
