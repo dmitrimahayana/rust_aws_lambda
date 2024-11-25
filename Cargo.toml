@@ -5,15 +5,16 @@ authors = ["dmitri.mahayana@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-tracing = "0.1.37"
 aws-config = { version= "1.5.10", features = ["behavior-version-latest"] }
 aws-sdk-s3 = "0.31.0"   # AWS SDK for S3
 serde_json = "1.0"
-aws-sdk-dynamodb = "1.54.0"
 tokio = { version = "1.20.1", features = ["full"] }
+tokio-postgres = "0.7"
 rusoto_core = "0.47.0"
 rusoto_s3 = "0.47.0"
+chrono = "0.4"
 dotenv = "0.15"
+
 
 [dependencies.clap]
 version = "4.4"
