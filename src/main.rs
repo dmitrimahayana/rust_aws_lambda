@@ -1,12 +1,13 @@
 use rusoto_core::{Region};
-use chrono::{NaiveDateTime, Duration};
 use rusoto_s3::{S3Client, S3, GetObjectRequest};
 use serde_json::Value;
 use std::env;
-use dotenv::dotenv;
+// use chrono::{NaiveDateTime, Duration};
+use std::time::Instant;
 use std::error::Error;
 use tokio::io::AsyncReadExt; // Import the trait
 use tokio_postgres::{Client, NoTls};
+use dotenv::dotenv;
 // use std::io::Read;
 
 async fn s3_config_download(bucket: &str, key: &str) -> Result<Value, Box<dyn Error>> {
@@ -48,22 +49,35 @@ async fn connect_db(host: &str, user: &str, password: &str, database: &str, port
 }
 
 async fn perform_query(client: &Client) -> Result<(), Box<dyn Error>> {
-    // Perform a query
-    let rows = client.query("SELECT post_id, media_type, TO_CHAR(date_posted, 'YYYY-MM-DD HH24:MI:SS') AS date_posted FROM analytics.aggregation_posts LIMIT 25", &[]).await?;
+    // Record the start time
+    let start_time = Instant::now();
 
+    // Perform a query
+    let rows = client.query("SELECT post_id, media_type, TO_CHAR(date_posted, 'YYYY-MM-DD HH24:MI:SS') AS date_posted FROM analytics.aggregation_posts", &[]).await?;
+    
+    let mut count = 1;
     // Process the query result
     for row in rows {
         let post_id: String = row.get(0);
         let media_type: String = row.get(1);
         let date_posted: String = row.get(2);
-        println!("post_id: {} media_type: {} date_posted: {}", post_id, media_type, date_posted);
+        count += 1;
+        println!("no: {} post_id: {} media_type: {} date_posted: {}", count, post_id, media_type, date_posted);
 
-        let naive_datetime = NaiveDateTime::parse_from_str(&date_posted, "%Y-%m-%d %H:%M:%S")?;
-        let new_naive_datetime = naive_datetime + Duration::days(7);
-        // Print the new NaiveDateTime as a string
-        let new_naive_datetime_str = new_naive_datetime.format("%Y-%m-%d %H:%M:%S").to_string();
-        println!("New NaiveDateTime: {}", new_naive_datetime_str);
+        // let naive_datetime = NaiveDateTime::parse_from_str(&date_posted, "%Y-%m-%d %H:%M:%S")?;
+        // let new_naive_datetime = naive_datetime + Duration::days(7);
+        // // Print the new NaiveDateTime as a string
+        // let new_naive_datetime_str = new_naive_datetime.format("%Y-%m-%d %H:%M:%S").to_string();
+        // println!("New NaiveDateTime: {}", new_naive_datetime_str);
     }
+
+    // Record the end time
+    let end_time = Instant::now();
+
+    // Calculate the duration
+    let duration = end_time.duration_since(start_time);
+    println!("Duration in seconds: {:?}", duration.as_secs());
+    println!("Duration in milliseconds: {:?}", duration.as_millis());
 
     Ok(())
 }
